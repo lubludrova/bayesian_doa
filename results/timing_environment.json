@@ -1,0 +1,32 @@
+{
+  "scope": "Fresh 100-draw calls at first sustained budgets selected by accepted 32-scramble accuracy evaluation; not adaptive stopping and excludes budget search cost.",
+  "included": [
+    "Sobol initialization and points",
+    "likelihood",
+    "prior correction and normalization",
+    "RNG initialization and physical draws"
+  ],
+  "excluded": [
+    "loading",
+    "imports",
+    "warmup",
+    "validation",
+    "IO",
+    "reference construction",
+    "OT"
+  ],
+  "observations": 240,
+  "multiplier": 1.5,
+  "repeats": 5,
+  "warmups_per_method_observation": 1,
+  "sobol_seed": 931101,
+  "schedule_seed": 940111,
+  "threads": 1,
+  "device": "CPU",
+  "precision": "float64/complex128",
+  "platform": "macOS-26.5-arm64-arm-64bit",
+  "cpu": "Apple M3 Pro",
+  "python": "3.10.11",
+  "torch": "2.13.0",
+  "numpy": "2.2.6"
+}

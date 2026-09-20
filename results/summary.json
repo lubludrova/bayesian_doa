@@ -1,0 +1,302 @@
+{
+  "observations": 240,
+  "scores": 153600,
+  "accuracy": [
+    {
+      "k": 2,
+      "n": 1024,
+      "reference_pool": 0,
+      "observations": 192,
+      "physical_median": 0.07247698320662602,
+      "quotient_median": 0.054942734039148844,
+      "paired_ratio_median": 1.3114884506654647,
+      "quotient_point_wins": 166,
+      "floor_median": 0.052572952563595024
+    },
+    {
+      "k": 2,
+      "n": 1024,
+      "reference_pool": 1,
+      "observations": 192,
+      "physical_median": 0.07287319445814938,
+      "quotient_median": 0.05532935257241225,
+      "paired_ratio_median": 1.3469190057540348,
+      "quotient_point_wins": 169,
+      "floor_median": 0.052572952563595024
+    },
+    {
+      "k": 2,
+      "n": 4096,
+      "reference_pool": 0,
+      "observations": 192,
+      "physical_median": 0.06381299111815171,
+      "quotient_median": 0.05329640607997653,
+      "paired_ratio_median": 1.0718744263521056,
+      "quotient_point_wins": 140,
+      "floor_median": 0.052572952563595024
+    },
+    {
+      "k": 2,
+      "n": 4096,
+      "reference_pool": 1,
+      "observations": 192,
+      "physical_median": 0.06435628131688573,
+      "quotient_median": 0.0530274726863614,
+      "paired_ratio_median": 1.0899924777186805,
+      "quotient_point_wins": 139,
+      "floor_median": 0.052572952563595024
+    },
+    {
+      "k": 2,
+      "n": 16384,
+      "reference_pool": 0,
+      "observations": 192,
+      "physical_median": 0.056352802666136986,
+      "quotient_median": 0.0520666049070445,
+      "paired_ratio_median": 1.0284663374244287,
+      "quotient_point_wins": 127,
+      "floor_median": 0.052572952563595024
+    },
+    {
+      "k": 2,
+      "n": 16384,
+      "reference_pool": 1,
+      "observations": 192,
+      "physical_median": 0.05657265875455923,
+      "quotient_median": 0.052517943302053324,
+      "paired_ratio_median": 1.024940189112828,
+      "quotient_point_wins": 120,
+      "floor_median": 0.052572952563595024
+    },
+    {
+      "k": 2,
+      "n": 65536,
+      "reference_pool": 0,
+      "observations": 192,
+      "physical_median": 0.052531615769863135,
+      "quotient_median": 0.05326774018632811,
+      "paired_ratio_median": 1.00044092220325,
+      "quotient_point_wins": 97,
+      "floor_median": 0.052572952563595024
+    },
+    {
+      "k": 2,
+      "n": 65536,
+      "reference_pool": 1,
+      "observations": 192,
+      "physical_median": 0.05189701579646208,
+      "quotient_median": 0.052790731713636935,
+      "paired_ratio_median": 0.9986593911644415,
+      "quotient_point_wins": 95,
+      "floor_median": 0.052572952563595024
+    },
+    {
+      "k": 2,
+      "n": 262144,
+      "reference_pool": 0,
+      "observations": 192,
+      "physical_median": 0.053412806697562334,
+      "quotient_median": 0.05334606362951713,
+      "paired_ratio_median": 0.993201013155826,
+      "quotient_point_wins": 90,
+      "floor_median": 0.052572952563595024
+    },
+    {
+      "k": 2,
+      "n": 262144,
+      "reference_pool": 1,
+      "observations": 192,
+      "physical_median": 0.05351026794319042,
+      "quotient_median": 0.053331233769070896,
+      "paired_ratio_median": 0.9917316597791013,
+      "quotient_point_wins": 86,
+      "floor_median": 0.052572952563595024
+    },
+    {
+      "k": 3,
+      "n": 1024,
+      "reference_pool": 0,
+      "observations": 48,
+      "physical_median": 0.08588766280583415,
+      "quotient_median": 0.06819890012275698,
+      "paired_ratio_median": 1.3506224135682041,
+      "quotient_point_wins": 46,
+      "floor_median": 0.06348176098832242
+    },
+    {
+      "k": 3,
+      "n": 1024,
+      "reference_pool": 1,
+      "observations": 48,
+      "physical_median": 0.08616767067378388,
+      "quotient_median": 0.0676617614569402,
+      "paired_ratio_median": 1.3524231867878274,
+      "quotient_point_wins": 44,
+      "floor_median": 0.06348176098832242
+    },
+    {
+      "k": 3,
+      "n": 4096,
+      "reference_pool": 0,
+      "observations": 48,
+      "physical_median": 0.0813640429114302,
+      "quotient_median": 0.06484981267087875,
+      "paired_ratio_median": 1.0743777213330254,
+      "quotient_point_wins": 40,
+      "floor_median": 0.06348176098832242
+    },
+    {
+      "k": 3,
+      "n": 4096,
+      "reference_pool": 1,
+      "observations": 48,
+      "physical_median": 0.0815007007702564,
+      "quotient_median": 0.06410539228479807,
+      "paired_ratio_median": 1.0811841434004954,
+      "quotient_point_wins": 41,
+      "floor_median": 0.06348176098832242
+    },
+    {
+      "k": 3,
+      "n": 16384,
+      "reference_pool": 0,
+      "observations": 48,
+      "physical_median": 0.07662787327185897,
+      "quotient_median": 0.06270923551967798,
+      "paired_ratio_median": 1.0636167258275306,
+      "quotient_point_wins": 37,
+      "floor_median": 0.06348176098832242
+    },
+    {
+      "k": 3,
+      "n": 16384,
+      "reference_pool": 1,
+      "observations": 48,
+      "physical_median": 0.07645807116553187,
+      "quotient_median": 0.06231377278327395,
+      "paired_ratio_median": 1.0495348058677876,
+      "quotient_point_wins": 39,
+      "floor_median": 0.06348176098832242
+    },
+    {
+      "k": 3,
+      "n": 65536,
+      "reference_pool": 0,
+      "observations": 48,
+      "physical_median": 0.0731698498221735,
+      "quotient_median": 0.061801179867860975,
+      "paired_ratio_median": 1.0161665026250788,
+      "quotient_point_wins": 32,
+      "floor_median": 0.06348176098832242
+    },
+    {
+      "k": 3,
+      "n": 65536,
+      "reference_pool": 1,
+      "observations": 48,
+      "physical_median": 0.07403413833497713,
+      "quotient_median": 0.06176954251301704,
+      "paired_ratio_median": 1.0150110318623753,
+      "quotient_point_wins": 32,
+      "floor_median": 0.06348176098832242
+    },
+    {
+      "k": 3,
+      "n": 262144,
+      "reference_pool": 0,
+      "observations": 48,
+      "physical_median": 0.0626763843589773,
+      "quotient_median": 0.061485100883663345,
+      "paired_ratio_median": 0.9980379294275618,
+      "quotient_point_wins": 23,
+      "floor_median": 0.06348176098832242
+    },
+    {
+      "k": 3,
+      "n": 262144,
+      "reference_pool": 1,
+      "observations": 48,
+      "physical_median": 0.06317174122262126,
+      "quotient_median": 0.06065175103419092,
+      "paired_ratio_median": 0.9965170534517598,
+      "quotient_point_wins": 22,
+      "floor_median": 0.06348176098832242
+    }
+  ],
+  "cost": [
+    {
+      "k": 2,
+      "observations": 192,
+      "physical_rqmc": {
+        "mean_budget": 9600.0,
+        "reached_at_1024": 104,
+        "reached": 192
+      },
+      "quotient_self_normalized": {
+        "mean_budget": 1072.0,
+        "reached_at_1024": 189,
+        "reached": 192
+      },
+      "mean_budget_ratio": 8.955223880597014
+    },
+    {
+      "k": 3,
+      "observations": 48,
+      "physical_rqmc": {
+        "mean_budget": 44992.0,
+        "reached_at_1024": 25,
+        "reached": 48
+      },
+      "quotient_self_normalized": {
+        "mean_budget": 1088.0,
+        "reached_at_1024": 47,
+        "reached": 48
+      },
+      "mean_budget_ratio": 41.35294117647059
+    }
+  ],
+  "reference": {
+    "points_per_rule": 1048576,
+    "rules_per_pool": 4,
+    "seeds": [
+      [
+        932101,
+        932102,
+        932103,
+        932104
+      ],
+      [
+        933101,
+        933102,
+        933103,
+        933104
+      ]
+    ],
+    "reference_draws": 10000,
+    "output_draws": 100,
+    "scope": "Numerical reference sensitivity, not a continuum accuracy certificate; candidate draws are fixed across reference pools.",
+    "limitations": "Unresolved three-source reference uncertainty remains. Finite-reference sample comparisons do not certify convergence to the true posterior."
+  },
+  "timing": [
+    {
+      "k": 2,
+      "method": "physical_rqmc",
+      "mean_ms": 6.503646921875
+    },
+    {
+      "k": 2,
+      "method": "quotient_self_normalized",
+      "mean_ms": 1.0083074739583333
+    },
+    {
+      "k": 3,
+      "method": "physical_rqmc",
+      "mean_ms": 49.71160597916667
+    },
+    {
+      "k": 3,
+      "method": "quotient_self_normalized",
+      "mean_ms": 1.5278984375
+    }
+  ]
+}
