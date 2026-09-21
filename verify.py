@@ -210,17 +210,17 @@ def audit_observation(batch, spec, sources: int, cell: int, episode: int,
     return rows
 
 def main():
-    parser = argparse.ArgumentParser(description="Verify Table 1 on all 240 observations.")
+    parser = argparse.ArgumentParser(description="Verify Table 1 on all 288 observations.")
     parser.add_argument("--output", type=Path, default=Path("verification.json"))
     args = parser.parse_args()
     torch.set_num_threads(1)
     rows = []
-    for obs in range(240):
+    for obs in range(288):
         spec, batch, sources, cell, episode = load_observation(obs)
         rows.extend(audit_observation(batch, spec, sources, cell, episode,
                                      [0.0, 0.7] if sources == 2 else [0.0]))
     groups = []
-    for sources, beta in ((2, 0.0), (2, 0.7), (3, 0.0)):
+    for sources, beta in ((2, 0.0), (2, 0.7), (3, 0.0), (4, 0.0)):
         subset = [r for r in rows if r["sources"] == sources and r["prior_beta"] == beta]
         groups.append({
             "sources": sources, "prior_beta": beta, "observations": len(subset),
@@ -230,7 +230,7 @@ def main():
             "failed_cases": sum(not r["passed"] for r in subset),
             "structural_failures": sum(len(r["structural_failures"]) for r in subset),
         })
-    assert [g["observations"] for g in groups] == [192, 192, 48]
+    assert [g["observations"] for g in groups] == [192, 192, 48, 48]
     assert all(r["passed"] for r in rows)
     args.output.write_text(json.dumps({"groups": groups, "rows": rows}, indent=2) + "\n")
     print(json.dumps(groups, indent=2))

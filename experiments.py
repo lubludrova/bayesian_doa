@@ -13,12 +13,18 @@ from scipy.special import softmax
 import torch
 from model import ROOT, METHODS, load_observation, sobol_nodes, evaluate_nodes
 
-BUDGETS = (1024, 4096, 16384, 65536, 262144)
+BUDGETS = (1024, 4096, 16384, 65536, 262144, 1048576, 4194304)
+OUTPUT_SIZES = (100, 500)
 SCRAMBLES = tuple(range(931101, 931133))
 REFERENCE_SEEDS = ((932101, 932102, 932103, 932104), (933101, 933102, 933103, 933104))
 REFERENCE_POINTS = 1048576
 def rng_for(*keys):
     return np.random.default_rng(np.random.SeedSequence([937101, *map(int, keys)]))
+
+
+def empirical_quantile(values, fraction):
+    ordered = np.sort(np.asarray(values))
+    return float(ordered[math.ceil(fraction * len(ordered)) - 1])
 
 
 def parent_distribution(x, logw, method, scale):
@@ -75,14 +81,14 @@ def distance(x, y, metric='cityblock'):
             'mass_residual': residual, 'unique_candidate_atoms': len(x),
             'unique_reference_atoms': len(y), 'seconds': time.perf_counter()-start}
 @torch.no_grad()
-def draw(batch, spec, k, method, n, obs):
+def draw(batch, spec, k, method, n, obs, size=100):
     nodes = sobol_nodes(k, 931101, n)
     logw = evaluate_nodes(batch, spec, nodes, method)[0].numpy()
     scale = 2 * float(batch.spacing[0]) * spec.u_limit
     x = nodes.numpy()
     w, lower, counts = parent_distribution(x, logw, method, scale)
-    return sample_measure(x, w, lower, counts, scale, 100,
-                          rng_for(4, obs, 931101, METHODS.index(method), n, 100, 0))
+    return sample_measure(x, w, lower, counts, scale, size,
+                          rng_for(4, obs, 931101, METHODS.index(method), n, size, 0))
 
 def accuracy(observations, output):
     rows, baselines = [], []
@@ -98,11 +104,12 @@ def accuracy(observations, output):
             weights = softmax(logw)
             references[pool] = sample_measure(x, weights, None, None, scale, 10000,
                                               rng_for(1, obs, pool))
-            for rep in range(32):
-                samples = sample_measure(x, weights, None, None, scale, 100,
-                                         rng_for(2, obs, pool, rep))
-                baselines.append({'obs': obs, 'k': k, 'pool': pool, 'repeat': rep,
-                                  **distance(samples, references[0])})
+            for size in OUTPUT_SIZES:
+                for rep in range(32):
+                    samples = sample_measure(x, weights, None, None, scale, size,
+                                             rng_for(2, obs, pool, rep, size))
+                    baselines.append({'obs': obs, 'k': k, 'm': size, 'pool': pool,
+                                      'repeat': rep, **distance(samples, references[0])})
             del x, logw, weights
         for seed in SCRAMBLES:
             nodes = sobol_nodes(k, seed, max(BUDGETS))
@@ -111,12 +118,13 @@ def accuracy(observations, output):
                 logw = evaluate_nodes(batch, spec, nodes, method)[0].numpy()
                 for n in BUDGETS:
                     weights, lower, counts = parent_distribution(x[:n], logw[:n], method, scale)
-                    samples = sample_measure(x[:n], weights, lower, counts, scale, 100,
-                                             rng_for(4, obs, seed, mi, n, 100, 0))
-                    for pool in (0, 1):
-                        rows.append({'obs': obs, 'k': k, 'method': method, 'seed': seed,
-                                     'n': n, 'reference_pool': pool,
-                                     **distance(samples, references[pool])})
+                    for size in OUTPUT_SIZES:
+                        samples = sample_measure(x[:n], weights, lower, counts, scale, size,
+                                                 rng_for(4, obs, seed, mi, n, size, 0))
+                        for pool in (0, 1):
+                            rows.append({'obs': obs, 'k': k, 'm': size, 'method': method,
+                                         'seed': seed, 'n': n, 'reference_pool': pool,
+                                         **distance(samples, references[pool])})
         print(f'Observation {obs}: complete', flush=True)
     for name, values in (('distances', rows), ('reference_baselines', baselines)):
         frame = pd.DataFrame(values).drop(columns=['seconds','unique_candidate_atoms','unique_reference_atoms'])
@@ -128,100 +136,138 @@ def accuracy(observations, output):
 def summarize(source, output):
     df = pd.read_csv(source / 'distances.csv.gz', float_precision='round_trip')
     baseline = pd.read_csv(source / 'reference_baselines.csv.gz', float_precision='round_trip')
-    assert not df.duplicated(['obs','method','seed','n','reference_pool']).any()
-    assert (df.groupby(['obs','n','method','reference_pool']).size() == 32).all()
+    assert not df.duplicated(['obs','m','method','seed','n','reference_pool']).any()
+    assert (df.groupby(['obs','m','n','method','reference_pool']).size() == 32).all()
     assert tuple(sorted(df.n.unique())) == BUDGETS
+    assert tuple(sorted(df.m.unique())) == OUTPUT_SIZES
     assert tuple(sorted(df.seed.unique())) == SCRAMBLES
-    assert not baseline.duplicated(['obs','pool','repeat']).any()
-    assert (baseline.groupby(['obs','pool']).size() == 32).all()
+    assert not baseline.duplicated(['obs','m','pool','repeat']).any()
+    assert (baseline.groupby(['obs','m','pool']).size() == 32).all()
+    assert df.obs.nunique() == baseline.obs.nunique() == 288
     for field in ('gap','dual_violation','mass_residual'):
         assert max(df[field].max(), baseline[field].max()) <= 1e-9
     assert np.isfinite(df.w1).all() and (df.w1 >= 0).all()
-    med = df.groupby(['obs','k','n','reference_pool','method']).w1.median().unstack('method').reset_index()
-    med['ratio'] = med[METHODS[0]] / med[METHODS[1]]
-    floor = baseline[baseline.pool == 0].groupby('obs').w1.median()
-    med['floor'] = med.obs.map(floor)
+    med = df.groupby(['obs','k','m','n','reference_pool','method']).w1.median().unstack('method').reset_index()
+    med['paired_ratio'] = med[METHODS[0]] / med[METHODS[1]]
+    floor = baseline[baseline.pool == 0].groupby(['obs','m']).w1.median()
+    med['floor'] = [floor.loc[(obs,size)] for obs,size in zip(med.obs,med.m)]
+    med = med[['obs','k','m','n','reference_pool',*METHODS,'floor','paired_ratio']]
     med.to_csv(output / 'per_observation.csv', index=False)
-    sensitivity = baseline.groupby(['obs','k','pool']).w1.median().unstack('pool').reset_index()
+    sensitivity = baseline.groupby(['obs','k','m','pool']).w1.median().unstack('pool').reset_index()
     sensitivity = sensitivity.rename(columns={0:'same_pool_median', 1:'independent_pool_median'})
     sensitivity['ratio'] = sensitivity.independent_pool_median / sensitivity.same_pool_median
     sensitivity.to_csv(output / 'reference_sensitivity.csv', index=False)
     costs = []
-    for obs, group in med[med.reference_pool == 0].groupby('obs'):
+    for (obs,k,size,pool), group in med.groupby(['obs','k','m','reference_pool']):
         group = group.sort_values('n')
         for multiplier in (1.25, 1.5, 2.0):
             threshold = float(group.floor.iloc[0]) * multiplier
-            row = {'obs':int(obs), 'k':int(group.k.iloc[0]),
-                   'multiplier':multiplier, 'threshold':threshold}
+            row = {'obs':int(obs), 'k':int(k), 'm':int(size),
+                   'reference_pool':int(pool), 'multiplier':multiplier,
+                   'threshold':threshold}
             for method in METHODS:
                 ok = group[method].to_numpy() <= threshold
                 sustained = np.logical_and.accumulate(ok[::-1])[::-1]
-                row[method] = int(group.n.to_numpy()[sustained][0]) if sustained.any() else None
+                row[method] = int(group.n.to_numpy()[sustained][0]) if sustained.any() else math.inf
             costs.append(row)
     costs = pd.DataFrame(costs)
     costs.to_csv(output / 'common_accuracy.csv', index=False)
     groups = []
-    for (k,n,pool), group in med.groupby(['k','n','reference_pool']):
-        groups.append({'k':int(k), 'n':int(n), 'reference_pool':int(pool),
+    for (k,size,pool,n), group in med.groupby(['k','m','reference_pool','n']):
+        ratios = group.paired_ratio.to_numpy()
+        rng = np.random.default_rng(950000 + int(k)*1000 + int(size) + int(math.log2(n))*2 + int(pool))
+        bootstrap = np.median(ratios[rng.integers(0,len(ratios),(2000,len(ratios)))],axis=1)
+        groups.append({'k':int(k), 'm':int(size), 'reference_pool':int(pool), 'n':int(n),
                        'observations':len(group),
                        'physical_median':float(group[METHODS[0]].median()),
                        'quotient_median':float(group[METHODS[1]].median()),
-                       'paired_ratio_median':float(group.ratio.median()),
-                       'quotient_point_wins':int((group.ratio > 1).sum()),
+                       'paired_ratio_median':float(np.median(ratios)),
+                       'paired_ratio_q25':float(np.quantile(ratios,.25)),
+                       'paired_ratio_q75':float(np.quantile(ratios,.75)),
+                       'paired_ratio_ci_low':float(np.quantile(bootstrap,.025)),
+                       'paired_ratio_ci_high':float(np.quantile(bootstrap,.975)),
+                       'quotient_wins':int((ratios > 1).sum()),
+                       'physical_wins':int((ratios < 1).sum()),
                        'floor_median':float(group.floor.median())})
+    accuracy = pd.DataFrame(groups)
+    accuracy.to_csv(output / 'accuracy_summary.csv', index=False)
     cost_groups = []
-    for k, group in costs[costs.multiplier == 1.5].groupby('k'):
-        row = {'k':int(k), 'observations':len(group)}
+    for (k,size,pool,multiplier), group in costs.groupby(['k','m','reference_pool','multiplier']):
+        row = {'k':int(k), 'm':int(size), 'reference_pool':int(pool),
+               'multiplier':float(multiplier), 'observations':len(group)}
         for method in METHODS:
-            row[method] = {'mean_budget':float(group[method].mean()),
-                           'reached_at_1024':int((group[method] <= 1024).sum()),
-                           'reached':int(group[method].notna().sum())}
-        row['mean_budget_ratio'] = float(group[METHODS[0]].mean() / group[METHODS[1]].mean())
+            values = group[method].to_numpy()
+            finite = np.isfinite(values)
+            row.update({f'{method}_reached':int(finite.sum()),
+                        f'{method}_mean':float(values.mean()),
+                        f'{method}_median':empirical_quantile(values,.5),
+                        f'{method}_p90':empirical_quantile(values,.9),
+                        f'{method}_unreached_ids':','.join(map(str,group.loc[~finite,'obs']))})
+        complete = all(np.isfinite(group[method]).all() for method in METHODS)
+        row['ratio_of_means'] = (float(group[METHODS[0]].mean()/group[METHODS[1]].mean())
+                                 if complete else math.nan)
+        row['quotient_lower_budget'] = int((group[METHODS[1]] < group[METHODS[0]]).sum())
+        row['equal_budget'] = int((group[METHODS[1]] == group[METHODS[0]]).sum())
+        row['physical_lower_budget'] = int((group[METHODS[1]] > group[METHODS[0]]).sum())
         cost_groups.append(row)
+    cost_frame = pd.DataFrame(cost_groups)
+    cost_frame.to_csv(output / 'cost_summary.csv', index=False)
+    json_cost = json.loads(
+        cost_frame.replace([np.inf,-np.inf],np.nan).to_json(orient='records')
+    )
     result = {'observations':int(df.obs.nunique()), 'scores':len(df),
-              'accuracy':groups, 'cost':cost_groups,
+              'baseline_scores':len(baseline), 'budgets':list(BUDGETS),
+              'output_draws':list(OUTPUT_SIZES),
+              'accuracy':groups, 'cost':json_cost,
               'reference':{'points_per_rule':REFERENCE_POINTS, 'rules_per_pool':4,
-                           'seeds':REFERENCE_SEEDS, 'reference_draws':10000, 'output_draws':100,
+                           'seeds':REFERENCE_SEEDS, 'reference_draws':10000,
                            'scope':'Numerical reference sensitivity, not a continuum accuracy certificate; candidate draws are fixed across reference pools.',
                            'limitations':'Unresolved three-source reference uncertainty remains. Finite-reference sample comparisons do not certify convergence to the true posterior.'}}
     timing_path = source / 'timing.csv'
     if timing_path.exists():
         timing = pd.read_csv(timing_path, float_precision='round_trip')
         assert (timing.groupby(['obs','method']).size() == 5).all()
-        times = timing.groupby(['obs','k','method','n']).ms.median().reset_index()
-        result['timing'] = [{'k':int(k),'method':method,'mean_ms':float(g.ms.mean())}
+        times = timing.groupby(['obs','k','method','n','reached']).ms.median().reset_index()
+        result['timing'] = [{'k':int(k),'method':method,'observations':len(g),
+                             'reached':int(g.reached.sum()),'mean_ms':float(g.ms.mean()),
+                             'median_ms':float(g.ms.median())}
                             for (k,method),g in times.groupby(['k','method'])]
     (output / 'summary.json').write_text(json.dumps(result, indent=2) + '\n')
-    print(json.dumps({'observations':result['observations'], 'cost':cost_groups,
+    print(json.dumps({'observations':result['observations'], 'cost':json_cost,
                       'timing':result.get('timing')}, indent=2))
 
 
 def timing(source, output):
     costs = pd.read_csv(source / 'common_accuracy.csv')
-    costs = costs[costs.multiplier == 1.5].set_index('obs')
-    assert len(costs) == 240 and not costs[list(METHODS)].isna().any().any()
+    costs = costs[(costs.m == 100) & (costs.reference_pool == 0)
+                  & (costs.multiplier == 1.5)].set_index('obs')
+    assert len(costs) == 288
     rows = []
-    for obs in range(240):
+    for obs in range(288):
         spec, batch, k, _, _ = load_observation(obs)
         expected = {}
         for method in METHODS:
-            points = draw(batch, spec, k, method, int(costs.loc[obs,method]), obs)
+            selected = float(costs.loc[obs,method])
+            reached = math.isfinite(selected)
+            budget = int(selected) if reached else BUDGETS[-1]
+            points = draw(batch, spec, k, method, budget, obs)
             assert points.shape == (100,k) and points.dtype == np.float64
-            expected[method] = hashlib.sha256(points.tobytes()).hexdigest()
+            expected[method] = (budget, reached, hashlib.sha256(points.tobytes()).hexdigest())
         schedule = [(method,rep) for method in METHODS for rep in range(5)]
         rng_for(940111, obs).shuffle(schedule)
         for method,rep in schedule:
-            n = int(costs.loc[obs,method])
+            n, reached, digest = expected[method]
             start = time.perf_counter_ns()
             points = draw(batch, spec, k, method, n, obs)
             ms = (time.perf_counter_ns() - start) / 1e6
-            assert hashlib.sha256(points.tobytes()).hexdigest() == expected[method]
-            rows.append({'obs':obs,'k':k,'method':method,'n':n,'repeat':rep,'ms':ms})
+            assert hashlib.sha256(points.tobytes()).hexdigest() == digest
+            rows.append({'obs':obs,'k':k,'m':100,'method':method,'n':n,
+                         'reached':reached,'repeat':rep,'ms':ms})
     pd.DataFrame(rows).to_csv(output / 'timing.csv', index=False)
     environment = {'platform':platform.platform(), 'machine':platform.machine(),
                    'python':platform.python_version(), 'torch':str(torch.__version__),
                    'numpy':np.__version__, 'threads':1, 'repeats':5,
-                   'scope':'100 draws at preselected budgets; includes Sobol initialization, likelihood, normalization and physical sampling; excludes loading, warmup, references and budget selection.'}
+                   'scope':'100 draws at preselected budgets over the complete 288-observation bank; includes Sobol initialization, likelihood, normalization and physical sampling; excludes loading, warmup, references and budget selection; unresolved cases use N=2^22.'}
     (output / 'timing_environment.json').write_text(json.dumps(environment,indent=2)+'\n')
     print(pd.DataFrame(rows).groupby(['obs','k','method']).ms.median().groupby(['k','method']).mean())
 
@@ -238,10 +284,10 @@ def main():
     parser.add_argument('action', choices=('accuracy','summarize','timing'))
     parser.add_argument('--input', type=Path, default=ROOT / 'results')
     parser.add_argument('--output', type=Path, default=ROOT / 'output')
-    parser.add_argument('--observations', type=int, nargs='+', default=list(range(240)),
-                        help='Observation indices for accuracy; default: all 240.')
+    parser.add_argument('--observations', type=int, nargs='+', default=list(range(288)),
+                        help='Observation indices for accuracy; default: all 288.')
     args = parser.parse_args()
-    assert all(0 <= obs < 240 for obs in args.observations)
+    assert all(0 <= obs < 288 for obs in args.observations)
     torch.set_num_threads(1)
     torch.set_num_interop_threads(1)
     args.output.mkdir(parents=True, exist_ok=True)

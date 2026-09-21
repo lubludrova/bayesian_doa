@@ -122,7 +122,51 @@ def log_likelihood_on_triple_grid(
     quadratic = trace - rho[:, None] * correction
     return -float(batch.snapshots) * (logdet.real + quadratic)
 
-Batch = MultiSourceBatch | ThreeSourceBatch
+@dataclass
+class FourSourceBatch:
+    observations: torch.Tensor
+    target_w: torch.Tensor
+    spacing: torch.Tensor
+    snr_db: torch.Tensor
+    snapshots: int
+
+
+def log_likelihood_on_quadruple_grid(
+    batch: FourSourceBatch,
+    quadruples_w: torch.Tensor,
+    spec: DoASpec,
+) -> torch.Tensor:
+    covariance = sample_covariance(batch.observations)
+    real_dtype = covariance.real.dtype
+    quadruples_w = quadruples_w.to(device=covariance.device, dtype=real_dtype)
+    sensor_index = torch.arange(
+        spec.sensors, device=covariance.device, dtype=real_dtype
+    )
+    direction_cosine = quadruples_w * spec.u_limit
+    positions = batch.spacing[:, None] * sensor_index
+    phase = (
+        -2.0
+        * math.pi
+        * direction_cosine[None, :, :, None]
+        * positions[:, None, None, :]
+    )
+    steering = torch.exp(1j * phase).to(covariance.dtype).permute(0, 1, 3, 2)
+    gram = torch.einsum("bpmi,bpmj->bpij", steering.conj(), steering)
+    rho = (torch.pow(10.0, batch.snr_db / 10.0) / 4.0).to(real_dtype)
+    eye = torch.eye(4, device=covariance.device, dtype=covariance.dtype)
+    small = eye[None, None] + rho[:, None, None, None] * gram
+    _, logdet = torch.linalg.slogdet(small)
+    inverse = torch.linalg.inv(small)
+    projected = torch.einsum(
+        "bpmi,bmn,bpnj->bpij", steering.conj(), covariance, steering
+    )
+    correction = torch.einsum("bpij,bpji->bp", inverse, projected).real
+    trace = covariance.diagonal(dim1=-2, dim2=-1).real.sum(dim=-1, keepdim=True)
+    quadratic = trace - rho[:, None] * correction
+    return -float(batch.snapshots) * (logdet.real + quadratic)
+
+
+Batch = MultiSourceBatch | ThreeSourceBatch | FourSourceBatch
 
 def require_ideal_ula(sensor_offsets: torch.Tensor | None) -> None:
 
@@ -166,7 +210,7 @@ def canonical_batch(batch: Batch, spec: DoASpec) -> Batch:
             batch.snr_db,
             batch.snapshots,
         )
-    return ThreeSourceBatch(
+    return type(batch)(
         batch.observations,
         batch.target_w,
         torch.full_like(batch.spacing, canonical_spacing(spec)),
@@ -190,11 +234,12 @@ def likelihood_in_chunks(
     pieces = []
     for start in range(0, len(candidates), chunk_size):
         chunk = candidates[start : start + chunk_size]
-        likelihood = (
-            log_likelihood_on_pair_grid(batch, chunk, spec)
-            if isinstance(batch, MultiSourceBatch)
-            else log_likelihood_on_triple_grid(batch, chunk, spec)
-        )
+        if isinstance(batch, MultiSourceBatch):
+            likelihood = log_likelihood_on_pair_grid(batch, chunk, spec)
+        elif isinstance(batch, ThreeSourceBatch):
+            likelihood = log_likelihood_on_triple_grid(batch, chunk, spec)
+        else:
+            likelihood = log_likelihood_on_quadruple_grid(batch, chunk, spec)
         pieces.append(likelihood[0])
     return torch.cat(pieces)
 def prior_density(points: torch.Tensor, beta: float) -> torch.Tensor:
@@ -229,8 +274,8 @@ def quotient_ratio(points: torch.Tensor, scale: float, beta: float) -> torch.Ten
     return mass / scale ** points.shape[1]
 def sobol_nodes(sources, seed, points, device="cpu"):
 
-    if sources not in (2, 3) or not isinstance(points, int) or points < 1:
-        raise ValueError("K=2/3 and a positive integer point count are required")
+    if sources not in (2, 3, 4) or not isinstance(points, int) or points < 1:
+        raise ValueError("K=2/3/4 and a positive integer point count are required")
     if not isinstance(seed, int) or seed < 0:
         raise ValueError("the Sobol seed must be a nonnegative integer")
     uniform = torch.quasirandom.SobolEngine(sources, scramble=True, seed=seed).draw(
@@ -240,9 +285,9 @@ def sobol_nodes(sources, seed, points, device="cpu"):
 
 
 def _check_points(points):
-    if (points.ndim != 2 or len(points) == 0 or points.shape[1] not in (2, 3)
+    if (points.ndim != 2 or len(points) == 0 or points.shape[1] not in (2, 3, 4)
             or points.dtype != torch.float64):
-        raise ValueError("points must be a nonempty float64 [N,K] tensor, K=2/3")
+        raise ValueError("points must be a nonempty float64 [N,K] tensor, K=2/3/4")
     if (not bool(torch.isfinite(points).all()) or bool((points.abs() > 1).any())
             or bool((points.diff(dim=1) < 0).any())):
         raise ValueError("points must be finite, sorted and lie in [-1,1]")
@@ -256,9 +301,9 @@ def evaluate_nodes(batch, spec, nodes, method, chunk_size=65536):
     _check_points(nodes)
     if not isinstance(chunk_size, int) or chunk_size < 1:
         raise ValueError("chunk_size must be a positive integer")
-    if not isinstance(batch, (MultiSourceBatch, ThreeSourceBatch)):
-        raise TypeError("expected a two- or three-source observation batch")
-    sources = 2 if isinstance(batch, MultiSourceBatch) else 3
+    if not isinstance(batch, (MultiSourceBatch, ThreeSourceBatch, FourSourceBatch)):
+        raise TypeError("expected a two-, three-, or four-source observation batch")
+    sources = {MultiSourceBatch: 2, ThreeSourceBatch: 3, FourSourceBatch: 4}[type(batch)]
     count = len(batch.observations)
     if (batch.observations.ndim != 3 or count == 0
             or batch.target_w.shape != (count, sources)
@@ -274,7 +319,11 @@ def evaluate_nodes(batch, spec, nodes, method, chunk_size=65536):
     if method == "quotient_self_normalized" and bool((nodes >= 1).any()):
         raise ValueError("canonical nodes must lie in the half-open interval [-1,1)")
     likelihood_batch = batch if method == "physical_rqmc" else canonical_batch(batch, spec)
-    likelihood = log_likelihood_on_pair_grid if sources == 2 else log_likelihood_on_triple_grid
+    likelihood = {
+        2: log_likelihood_on_pair_grid,
+        3: log_likelihood_on_triple_grid,
+        4: log_likelihood_on_quadruple_grid,
+    }[sources]
     values = [likelihood(likelihood_batch, nodes[start:start + chunk_size], spec)
               for start in range(0, len(nodes), chunk_size)]
     result = torch.cat(values, dim=1)
@@ -287,7 +336,11 @@ def load_observation(index):
         sources = int(saved["sources"][index])
         snapshots = int(saved["snapshots"][index])
         spec = DoASpec(sensors=8, fov_deg=float(saved["fov_deg"][index]))
-        batch_type = MultiSourceBatch if sources == 2 else ThreeSourceBatch
+        batch_type = {
+            2: MultiSourceBatch,
+            3: ThreeSourceBatch,
+            4: FourSourceBatch,
+        }[sources]
         batch = batch_type(
             torch.from_numpy(saved["observations"][index:index+1, :snapshots].copy()),
             torch.from_numpy(saved["target_w"][index:index+1, :sources].copy()),

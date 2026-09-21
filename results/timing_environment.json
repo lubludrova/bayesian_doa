@@ -1,5 +1,5 @@
 {
-  "scope": "Fresh 100-draw calls at first sustained budgets selected by accepted 32-scramble accuracy evaluation; not adaptive stopping and excludes budget search cost.",
+  "scope": "Fresh 100-draw calls at first sustained budgets selected by the 32-scramble accuracy evaluation; unresolved cases use N=2^22; not adaptive stopping and excludes budget search cost.",
   "included": [
     "Sobol initialization and points",
     "likelihood",
@@ -15,7 +15,7 @@
     "reference construction",
     "OT"
   ],
-  "observations": 240,
+  "observations": 288,
   "multiplier": 1.5,
   "repeats": 5,
   "warmups_per_method_observation": 1,
